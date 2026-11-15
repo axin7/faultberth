@@ -1,0 +1,7 @@
+/faultberth
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+.env
+admin-password
