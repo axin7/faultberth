@@ -37,6 +37,15 @@ and key printed by `-create-project`. A public reverse proxy should expose only 
 `/api/<project_id>/envelope/` endpoint, use HTTPS, enforce request and rate limits, and leave
 all dashboard paths private. The dashboard is at `/`; `/health/ready` checks database access.
 
+For a Linux Docker host, build a static binary for that host's architecture before building
+the image. The container runs as UID/GID 14237; its data directory must be writable by that user.
+Use host networking so the loopback-only listener is reachable from the host's reverse proxy.
+
+```sh
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o faultberth ./cmd/faultberth
+docker build -t faultberth .
+```
+
 ## Import from an existing instance
 
 Stop writes or take a consistent SQLite backup using the SQLite backup API. Import into a new,

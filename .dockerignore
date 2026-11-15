@@ -1,0 +1,5 @@
+.git
+*.sqlite*
+*.db*
+.env
+admin-password
