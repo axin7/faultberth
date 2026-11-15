@@ -104,3 +104,32 @@ func TestSetup(t *testing.T) {
 		t.Fatalf("project id=%d, key length=%d, err=%v", id, len(key), err)
 	}
 }
+
+func TestIssuesFilterSearchAndStatus(t *testing.T) {
+	s, err := Open(t.TempDir() + "/test.sqlite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err := s.db.Exec("INSERT INTO projects(id,name,sentry_key) VALUES(1,'app','key')"); err != nil {
+		t.Fatal(err)
+	}
+	for _, issue := range []struct {
+		id, title string
+		resolved  bool
+	}{{"a", "Network timeout", false}, {"b", "Network error", true}, {"c", "Disk error", false}} {
+		if _, err := s.db.Exec(`INSERT INTO issues(id,project_id,title,first_seen,last_seen,count,resolved)
+			VALUES(?,1,?,'a','b',1,?)`, issue.id, issue.title, issue.resolved); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, test := range []struct {
+		query, status string
+		want          int
+	}{{"network", "", 2}, {"network", "open", 1}, {"network", "resolved", 1}, {"%", "", 0}, {"", "open", 2}} {
+		issues, err := s.Issues(context.Background(), 0, test.query, test.status)
+		if err != nil || len(issues) != test.want {
+			t.Fatalf("query=%q status=%q: got %d, want %d, err=%v", test.query, test.status, len(issues), test.want, err)
+		}
+	}
+}

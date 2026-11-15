@@ -15,9 +15,11 @@ func (s *Store) PasswordHash(ctx context.Context, username string) (string, erro
 	return hash, err
 }
 
-func (s *Store) Issues(ctx context.Context, offset int) ([]Issue, error) {
+func (s *Store) Issues(ctx context.Context, offset int, query, status string) ([]Issue, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id,project_id,title,last_seen,count,resolved
-		FROM issues WHERE deleted=0 ORDER BY last_seen DESC,id LIMIT 50 OFFSET ?`, offset)
+		FROM issues WHERE deleted=0 AND instr(lower(title),lower(?)) > 0
+		AND (?='' OR resolved=?) ORDER BY last_seen DESC,id LIMIT 50 OFFSET ?`,
+		query, status, status == "resolved", offset)
 	if err != nil {
 		return nil, err
 	}

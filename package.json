@@ -1,0 +1,11 @@
+{
+  "name": "faultberth-ui",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss -i ./internal/admin/assets/input.css -o ./internal/admin/assets/app.css --minify"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.3.5",
+    "tailwindcss": "4.3.5"
+  }
+}

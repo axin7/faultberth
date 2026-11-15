@@ -68,4 +68,8 @@ go test ./...
 go vet ./...
 ```
 
+The generated Tailwind stylesheet is committed and embedded in the Go binary, so running the
+server does not require Node.js or a CDN. After editing the dashboard template or stylesheet,
+regenerate it with `pnpm install --frozen-lockfile` followed by `pnpm run build:css`.
+
 The wire format and authentication are based on the public [Sentry envelope specification](https://develop.sentry.dev/sdk/foundations/envelopes/).

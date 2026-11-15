@@ -3,3 +3,6 @@
 *.db*
 .env
 admin-password
+
+node_modules
+.oil-ui

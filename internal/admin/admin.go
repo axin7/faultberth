@@ -5,7 +5,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"html/template"
 	"net/http"
 	"strconv"
 	"strings"
@@ -23,10 +22,13 @@ type page struct {
 	Title       string
 	Issues      []store.Issue
 	Issue       store.Issue
-	Events      []store.Event
+	Events      []eventView
 	Token       string
+	Query       string
+	Status      string
 	Previous    int
 	Next        int
+	ListOffset  int
 	HasPrevious bool
 	HasNext     bool
 }
@@ -63,13 +65,25 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) index(w http.ResponseWriter, r *http.Request) {
 	offset := pageOffset(r, 50)
-	issues, err := h.Store.Issues(r.Context(), offset)
+	query, status := filterValues(r.URL.Query().Get("q"), r.URL.Query().Get("status"))
+	issues, err := h.Store.Issues(r.Context(), offset, query, status)
 	if err != nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
 	}
-	render(w, page{Title: "Issues", Issues: issues, Previous: offset - 50,
-		Next: offset + 50, HasPrevious: offset > 0, HasNext: len(issues) == 50})
+	render(w, page{Title: "Issues", Issues: issues, Query: query, Status: status, ListOffset: offset,
+		Previous: offset - 50, Next: offset + 50, HasPrevious: offset > 0, HasNext: len(issues) == 50})
+}
+
+func filterValues(query, status string) (string, string) {
+	query = strings.TrimSpace(query)
+	if runes := []rune(query); len(runes) > 200 {
+		query = string(runes[:200])
+	}
+	if status != "open" && status != "resolved" {
+		status = ""
+	}
+	return query, status
 }
 
 func (h Handler) issue(w http.ResponseWriter, r *http.Request, user string) {
@@ -79,6 +93,8 @@ func (h Handler) issue(w http.ResponseWriter, r *http.Request, user string) {
 		return
 	}
 	offset := pageOffset(r, 20)
+	query, status := filterValues(r.URL.Query().Get("q"), r.URL.Query().Get("status"))
+	listOffset := parseOffset(r.URL.Query().Get("list_offset"), 50)
 	issue, events, err := h.Store.IssueEvents(r.Context(), id, offset)
 	if store.IsNotFound(err) {
 		http.NotFound(w, r)
@@ -88,12 +104,17 @@ func (h Handler) issue(w http.ResponseWriter, r *http.Request, user string) {
 		http.Error(w, "database error", http.StatusInternalServerError)
 		return
 	}
-	render(w, page{Title: issue.Title, Issue: issue, Events: events, Token: h.token(user, id),
+	render(w, page{Title: issue.Title, Issue: issue, Events: eventViews(events), Token: h.token(user, id),
+		Query: query, Status: status, ListOffset: listOffset,
 		Previous: offset - 20, Next: offset + 20, HasPrevious: offset > 0, HasNext: len(events) == 20})
 }
 
 func pageOffset(r *http.Request, pageSize int) int {
-	offset, err := strconv.Atoi(r.URL.Query().Get("offset"))
+	return parseOffset(r.URL.Query().Get("offset"), pageSize)
+}
+
+func parseOffset(value string, pageSize int) int {
+	offset, err := strconv.Atoi(value)
 	if err != nil || offset < 0 || offset > 1_000_000 || offset%pageSize != 0 {
 		return 0
 	}
@@ -130,39 +151,7 @@ func (h Handler) resolve(w http.ResponseWriter, r *http.Request, user string) {
 		}
 		return
 	}
-	http.Redirect(w, r, "/issues/"+id, http.StatusSeeOther)
+	query, status := filterValues(r.PostForm.Get("q"), r.PostForm.Get("status"))
+	listOffset := parseOffset(r.PostForm.Get("list_offset"), 50)
+	http.Redirect(w, r, issueURL(id, query, status, listOffset, 0), http.StatusSeeOther)
 }
-
-func render(w http.ResponseWriter, p page) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_ = dashboard.Execute(w, p)
-}
-
-var dashboard = template.Must(template.New("dashboard").Parse(`<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-<title>{{.Title}} | Faultberth</title><style>
-body{font:1rem/1.5 system-ui,sans-serif;color:#182136;background:#f5f7fb;margin:0}
-header,main{max-width:72rem;margin:auto;padding:1rem} header{border-bottom:1px solid #bcc5d3}
-a{color:#0756a5} table{border-collapse:collapse;width:100%;background:white}
-th,td{padding:.75rem;text-align:left;border-bottom:1px solid #d5dce5;vertical-align:top}
-.table{overflow:auto} pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#fff;padding:1rem}
-small{color:#454e5f} details{margin:1rem 0} summary{cursor:pointer}
-</style></head><body><header><a href="/">Faultberth</a></header><main>
-<h1>{{.Title}}</h1>
-{{if .Issue.ID}}<p>Project {{.Issue.ProjectID}} · {{.Issue.Count}} events ·
-{{if .Issue.Resolved}}Resolved{{else}}Open{{end}}</p>
-<form method="post" action="/issues/{{.Issue.ID}}"><input type="hidden" name="csrf" value="{{.Token}}">
-{{if .Issue.Resolved}}<button name="action" value="reopen">Reopen issue</button>
-{{else}}<button name="action" value="resolve">Resolve issue</button>{{end}}</form>
-{{range .Events}}<details><summary>{{.Timestamp}} · {{.ID}}</summary><pre>{{.Data}}</pre></details>{{end}}
-{{else}}<div class="table" role="region" aria-label="Issues" tabindex="0"><table>
-<caption>Recent issues</caption><thead><tr><th scope="col">Issue</th><th scope="col">Project</th>
-<th scope="col">Events</th><th scope="col">Last seen</th><th scope="col">Status</th></tr></thead><tbody>
-{{range .Issues}}<tr><th scope="row"><a href="/issues/{{.ID}}">{{.Title}}</a></th>
-<td>{{.ProjectID}}</td><td>{{.Count}}</td><td>{{.LastSeen}}</td>
-<td>{{if .Resolved}}Resolved{{else}}Open{{end}}</td></tr>{{else}}<tr><td colspan="5">No issues yet.</td></tr>{{end}}
-</tbody></table></div>{{end}}
-{{if or .HasPrevious .HasNext}}<nav aria-label="Pagination">
-{{if .HasPrevious}}<a href="?offset={{.Previous}}">Previous page</a>{{end}}
-{{if .HasNext}}<a href="?offset={{.Next}}">Next page</a>{{end}}</nav>{{end}}
-</main></body></html>`))

@@ -62,11 +62,25 @@ func TestDashboardAuthAndEscape(t *testing.T) {
 	}
 	h := Handler{Store: s, Secret: []byte("0123456789abcdef0123456789abcdef")}
 	id := "0123456789abcdef0123456789abcdef"
+	r := httptest.NewRequest(http.MethodGet, "/?q=script&status=open", nil)
+	r.SetBasicAuth("admin", "pass")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if !strings.Contains(w.Body.String(), "/issues/"+id+"?q=script&amp;status=open") {
+		t.Fatal("issue link did not preserve search and status filters")
+	}
+	r = httptest.NewRequest(http.MethodGet, "/issues/"+id+"?q=script&status=open", nil)
+	r.SetBasicAuth("admin", "pass")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if !strings.Contains(w.Body.String(), `href="/?q=script&amp;status=open"`) {
+		t.Fatal("detail link did not preserve search and status filters")
+	}
 	for _, test := range []struct {
 		token  string
 		status int
 	}{{"invalid", 403}, {h.token("admin", id), 303}} {
-		form := url.Values{"csrf": {test.token}, "action": {"resolve"}}
+		form := url.Values{"csrf": {test.token}, "action": {"resolve"}, "q": {"script"}, "status": {"open"}}
 		r := httptest.NewRequest(http.MethodPost, "/issues/"+id, strings.NewReader(form.Encode()))
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		r.SetBasicAuth("admin", "pass")
@@ -74,6 +88,9 @@ func TestDashboardAuthAndEscape(t *testing.T) {
 		h.ServeHTTP(w, r)
 		if w.Code != test.status {
 			t.Fatalf("resolve status = %d, want %d", w.Code, test.status)
+		}
+		if w.Code == 303 && w.Header().Get("Location") != "/issues/"+id+"?q=script&status=open" {
+			t.Fatalf("resolve redirect lost context: %s", w.Header().Get("Location"))
 		}
 	}
 	var resolved bool

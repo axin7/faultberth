@@ -1,0 +1,16 @@
+@import "tailwindcss" source(none);
+@source "../templates/*.html";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+@layer base {
+  body { @apply bg-[#f7f8fa] font-sans text-[#1c2534] antialiased; }
+  a, button, input { @apply focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3559e9]; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
